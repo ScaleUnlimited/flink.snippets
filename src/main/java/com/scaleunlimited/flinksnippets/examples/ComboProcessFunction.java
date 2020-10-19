@@ -11,6 +11,10 @@ import org.apache.flink.util.OutputTag;
 /**
  * Process an incoming stream of <I> records, keyed by <K>, using two provided process
  * functions, and output results to two side outputs.
+ * 
+ * Really would be better to just implement as a KeyedProcessFunction that has a side
+ * output, and forwards the incoming record, which can then be processed again by a
+ * different function.
  *
  * @param <K>
  * @param <I>
