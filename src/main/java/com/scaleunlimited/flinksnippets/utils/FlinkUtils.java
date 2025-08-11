@@ -138,13 +138,15 @@ public class FlinkUtils {
 	}
 	
 	public static Integer makeKeyForOperatorIndex(int maxParallelism, int parallelism, int operatorIndex) {
-		if (maxParallelism == ExecutionJobVertex.VALUE_NOT_SET) {
+		// TODO - see if this check is still needed. Look at when/why ExecutionJobVertex.VALUE_NOT_SET
+		// was removed.
+		if (maxParallelism == -1) {
 			maxParallelism = KeyGroupRangeAssignment.computeDefaultMaxParallelism(parallelism);
 		}
 		
 		for (int i = 0; i < maxParallelism * 2; i++) {
 			
-			Integer key = new Integer(i);
+			Integer key = i;
 			int keyGroup = KeyGroupRangeAssignment.assignToKeyGroup(key, maxParallelism);
 			int index = KeyGroupRangeAssignment.computeOperatorIndexForKeyGroup(maxParallelism, parallelism, keyGroup);
 			if (index == operatorIndex) {

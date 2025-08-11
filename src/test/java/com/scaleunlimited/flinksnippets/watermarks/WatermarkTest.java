@@ -5,13 +5,12 @@ import org.apache.flink.api.common.eventtime.WatermarkGenerator;
 import org.apache.flink.api.common.eventtime.WatermarkOutput;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.time.Time;
-import org.apache.flink.configuration.Configuration;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.streaming.api.TimeCharacteristic;
+import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.streaming.api.functions.sink.DiscardingSink;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
-import org.apache.flink.util.Collector;
 import org.junit.Test;
 
 import com.scaleunlimited.flinksnippets.MockSource;
@@ -19,6 +18,46 @@ import com.scaleunlimited.flinksnippets.MockSource;
 public class WatermarkTest {
 
     // See https://ci.apache.org/projects/flink/flink-docs-stable/dev/event_timestamps_watermarks.html#how-operators-process-watermarks
+    
+    @Test
+    public void testWatermarkAfterUnion() throws Exception {
+        // Create empty source, so no watermarks.
+        SourceFunction<WatermarkedRecord> source1 = new MockSource<WatermarkedRecord>(TypeInformation.of(WatermarkedRecord.class))
+                .setNeverTerminate(true)
+                .setDelay(Time.milliseconds(10));
+        
+        // Create source with 6 different records, in increasing time.
+        SourceFunction<WatermarkedRecord> source2 = new MockSource<WatermarkedRecord>(
+                        new WatermarkedRecord(0),
+                        new WatermarkedRecord(1),
+                        new WatermarkedRecord(2),
+                        new WatermarkedRecord(3),
+                        new WatermarkedRecord(4),
+                        new WatermarkedRecord(5))
+                .setNeverTerminate(true)
+                .setDelay(Time.milliseconds(10));
+
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(1);
+
+        // Create a watermark strategy that emits a watermark with every record, with the
+        // watermark time equal to the record event time.
+        WatermarkStrategy<WatermarkedRecord> ws = (ctx -> new WatermarkWithEveryRecord());
+        ws = ws.withTimestampAssigner((r, ts) -> r.getTimestamp());
+        
+        DataStream<WatermarkedRecord> stream1 = env.addSource(source1)
+                .assignTimestampsAndWatermarks(ws)
+                .process(new PrintWatermarksFunction("stream1"));
+        
+        DataStream<WatermarkedRecord> stream2 = env.addSource(source2)
+                .assignTimestampsAndWatermarks(ws)
+                .process(new PrintWatermarksFunction("stream2"));
+            
+        stream1.union(stream2).process(new PrintWatermarksFunction("unioned"))
+        .addSink(new DiscardingSink<>());
+        
+        env.execute();
+    }
+    
     
     @Test
     public void testWatermarkAfterKeyBy() throws Exception {
@@ -81,59 +120,17 @@ public class WatermarkTest {
         }
     }
     
-    private static class WatermarkedRecord {
-        
-        private int id;
-        private long timestamp;
-        
-        public WatermarkedRecord(int id) {
-            this(id, id * 100);
-        }
-        
-        public WatermarkedRecord(int id, long timestamp) {
-            this.id = id;
-            this.timestamp = timestamp;
-        }
-        
-        public int getId() {
-            return id;
-        }
-        public void setId(int id) {
-            this.id = id;
-        }
-        public long getTimestamp() {
-            return timestamp;
-        }
-        public void setTimestamp(long timestamp) {
-            this.timestamp = timestamp;
-        }
-    }
-    
-    @SuppressWarnings("serial")
-    private static class PrintWatermarksFunction extends ProcessFunction<WatermarkedRecord, WatermarkedRecord> {
+    private static class WatermarkWithEveryRecord implements WatermarkGenerator<WatermarkedRecord> {
 
-        private String prefix;
-        
-        private transient int subtaskIndex;
-        
-        public PrintWatermarksFunction(String prefix) {
-            this.prefix = prefix;
-        }
-        
         @Override
-        public void open(Configuration parameters) throws Exception {
-            super.open(parameters);
-            
-            subtaskIndex = getRuntimeContext().getIndexOfThisSubtask();
+        public void onEvent(WatermarkedRecord in, long eventTimestamp, WatermarkOutput out) {
+            System.out.format("Emitting watermark for id %d at %d\n", in.getId(), in.getTimestamp());
+            out.emitWatermark(new Watermark(in.getTimestamp()));
         }
-        
+
         @Override
-        public void processElement(WatermarkedRecord in, Context ctx, Collector<WatermarkedRecord> out) throws Exception {
-            long watermark = ctx.timerService().currentWatermark();
-            
-            System.out.format("%s [%d] id %s: watermark %d\n", prefix, subtaskIndex, in.getId(), watermark);
-            
-            out.collect(in);
+        public void onPeriodicEmit(WatermarkOutput output) {
+            // Do nothing on period call
         }
     }
 

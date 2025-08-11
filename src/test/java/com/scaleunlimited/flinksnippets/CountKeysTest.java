@@ -58,7 +58,24 @@ public class CountKeysTest {
             return true;
         }
     }
-    
+
+    private static class DedupFunction extends RichFilterFunction<Event> {
+        private ValueState<Boolean> state = null;
+
+        @Override
+        public void open(Configuration config) throws Exception {
+            ValueStateDescriptor<Boolean> vsd = new ValueStateDescriptor<>("seen", Boolean.class);
+            state = getRuntimeContext().getState(vsd);
+        }
+
+        @Override
+        public boolean filter(Event in) throws Exception {
+            Boolean seen = state.value();
+            state.update(true);
+            return !seen;
+        }
+    }
+
     public static class Event implements Comparable<Event> {
         private String _label;
         private long _timestamp;

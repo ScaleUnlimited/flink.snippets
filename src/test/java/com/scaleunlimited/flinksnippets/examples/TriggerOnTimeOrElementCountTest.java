@@ -21,7 +21,6 @@ public class TriggerOnTimeOrElementCountTest {
     @Test
     public void test() throws Exception {
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(1);
-        env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
         
         @SuppressWarnings("serial")
         RichParallelSourceFunction<Integer> source = new RichParallelSourceFunction<Integer>() {

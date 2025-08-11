@@ -8,3 +8,4 @@ build-eclipse
 *.dot
 *.hprof
 junit*.properties
+.idea/
