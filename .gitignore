@@ -9,3 +9,4 @@ build-eclipse
 *.hprof
 junit*.properties
 .idea/
+*.class
